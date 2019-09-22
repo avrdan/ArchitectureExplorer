@@ -27,6 +27,7 @@ public:
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 private:
+	void UpdateDestinationMarker();
 	void MoveForward(float throttle);
 	void MoveRight(float throttle);
 
@@ -35,5 +36,10 @@ protected:
 	class UCameraComponent* Camera;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	class USceneComponent* VRRoot;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	class UStaticMeshComponent* DestinationMarker;
 
+private:
+	UPROPERTY(EditAnywhere)
+	float maxTeleportDistance = 1000;
 };
