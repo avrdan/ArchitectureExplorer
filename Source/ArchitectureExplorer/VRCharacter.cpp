@@ -39,8 +39,6 @@ AVRCharacter::AVRCharacter()
 	PrimaryActorTick.bCanEverTick = true;
 
 	Oculus = CreateDefaultSubobject<UOculusFunctionLibrary>(TEXT("Oculus"));
-	//TUniquePtr<FVector> Transparent = MakeUnique<FVector>(0, 0, 1);
-	//TUniquePtr<FVector> Opaque = MakeUnique<FVector>(0, 0, 0);
 	Transparent = FLinearColor(1, 1, 1, 1);
 	Opaque = FLinearColor(0, 0, 0, 0);
 
@@ -50,68 +48,8 @@ AVRCharacter::AVRCharacter()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(VRRoot);
 
-	/*StereoLayer = CreateDefaultSubobject<UStereoLayerComponent>(TEXT("StereoLayer"));
-	StereoLayer->SetupAttachment(Camera);
-	StereoLayer->bSupportsDepth = true;
-	StereoLayer->bLiveTexture = true;
-	StereoLayer->SetQuadSize(FVector2D(1000, 1000));
-	FVector stereoLayerOffset(10, 0, 0);
-	StereoLayer->AddWorldOffset(stereoLayerOffset);*/
-
-	// No need for setting the height on the QUEST,
-	// it will be taken from the Guardian system
-	//VRRoot->SetRelativeLocation(FVector(0, 0, 180));
-
 	DestinationMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DestinationMarker"));
 	DestinationMarker->SetupAttachment(GetRootComponent());
-
-	//FStringAssetReference SequenceName("/Game/TeleportFadeSequence");
-	//SequenceAsset = Cast<UMovieSceneSequence>(SequenceName.TryLoad());
-	SequenceAsset = LoadObject<ULevelSequence>(NULL, TEXT("/Game/TeleportFadeSequence"), NULL, LOAD_None, NULL);
-
-	if (IsValid(SequenceAsset))
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Sequence asset loaded!"));
-
-		ALevelSequenceActor* actor = nullptr;
-		SequencePlayer = ULevelSequencePlayer::CreateLevelSequencePlayer(GetWorld(), SequenceAsset, FMovieSceneSequencePlaybackSettings(), actor);
-
-		//FMovieSceneSequencePlaybackSettings settings;
-		//SequencePlayer = CreateDefaultSubobject< UMovieSceneSequencePlayer>(TEXT("MovieSceneSequencePlayer"));
-		//MovieActor = GetWorld()->SpawnActor<ALevelSequenceActor>();
-		//MovieActor->SetSequence(SequenceAsset);
-
-		//SequencePlayer->Initialize(SequenceAsset, settings);
-	}
-	else
-	{
-		UE_LOG(LogTemp, Error, TEXT("Sequence asset could NOT be loaded!"));
-	}
-
-	/*SequencePlayer = ULevelSequencePlayer::CreateLevelSequencePlayer(GetWorld(), SequenceAsset, FMovieSceneSequencePlaybackSettings());
-	if (SequencePlayer)
-	{
-		SequencePlayer->Play();
-	}*/
-
-
-	/*static ConstructorHelpers::FClassFinder<UUserWidget> FadeWidget(TEXT("/Game/BP_FadeWidget"));
-	Widget = CreateDefaultSubobject<UWidgetComponent>(TEXT("FadeWidget"));
-	//Widget->SetupAttachment(Camera);
-	Widget->SetupAttachment(StereoLayer);
-	//Widget->AttachTo(StereoLayer);
-	if (FadeWidget.Succeeded())
-	{
-		Widget->SetWidgetClass(FadeWidget.Class);
-	}
-
-	// set material
-	static ConstructorHelpers::FObjectFinder<UMaterialInstanceConstant> TranslucentMat(TEXT("/Engine/EngineMaterials/Widget3DPassThrough_Translucent"));
-	if (TranslucentMat.Succeeded())
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Loaded Material for Widget.."));
-		WidgetMat = TranslucentMat.Object;
-	}*/
 }
 
 // Called when the game starts or when spawned
@@ -133,50 +71,9 @@ void AVRCharacter::Tick(float DeltaTime)
 
 	UpdateDestinationMarker();
 
-	if (!init)
+	if (fadeState != EFade::OFF)
 	{
-		/*Widget->SetMaterial(0, WidgetMat);
-		Widget->SetDrawSize(FVector2D(1000, 1000));
-		Widget->SetRelativeRotation(FRotator(0, 180.0f, 0));
-		Widget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		FadeAnim = GetWidgetAnim();*/
-		init = true;
-
-		//Widget->SetVisibility(false);
-		//UTextureRenderTarget2D* renderTarget = Widget->GetRenderTarget();
-		/*if (renderTarget)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("*** FOUND Render target"));
-			if (renderTarget && renderTarget->IsValidLowLevel())
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Found render target!"));
-				init = true;
-				StereoLayer->SetTexture(Widget->GetRenderTarget());
-
-			}
-			else
-			{
-				UE_LOG(LogTemp, Error, TEXT("NO RENDER TARGET!"));
-			}
-		}*/
-
-
-
-	}
-	else
-	{
-		/*FWidgetRenderer* WidgetRenderer = new FWidgetRenderer();
-		UTextureRenderTarget2D* Texture = WidgetRenderer->CreateTargetFor(Widget->GetDrawSize(), TextureFilter::TF_Default, false);
-		TSharedRef<SWidget> swidget = Widget->GetUserWidgetObject()->TakeWidget();
-		WidgetRenderer->DrawWidget(Texture, swidget, FVector2D(1000, 1000), 0);
-		//UTextureRenderTarget2D* renderTarget = WidgetRenderer->CreateTargetFor(Widget->GetDrawSize(), TextureFilter::TF_Default, false);
-		StereoLayer->SetTexture(Texture);
-		delete WidgetRenderer;*/
-	}
-
-	if (startFade)
-	{
-		StartFade(DeltaTime);
+		ContinueFade(DeltaTime);
 	}
 }
 
@@ -199,11 +96,6 @@ void AVRCharacter::UpdateDestinationMarker()
 
 	if (GetWorld()->LineTraceSingleByChannel(hit, start, end, ECollisionChannel::ECC_Visibility))
 	{
-		// Not Good for VR as the text is almost outside the view
-		/*if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 15.0f, FColor::Red, "Ray cast HIT!!");
-		}*/
 		DestinationMarker->SetVisibility(true);
 		DestinationMarker->SetWorldLocation(hit.Location);
 	}
@@ -215,39 +107,25 @@ void AVRCharacter::UpdateDestinationMarker()
 
 void AVRCharacter::MoveForward(float throttle)
 {
+	if (fadeState != EFade::OFF)
+		return;
 	AddMovementInput(Camera->GetForwardVector() * throttle);
 }
 
 void AVRCharacter::MoveRight(float throttle)
 {
+	if (fadeState != EFade::OFF)
+		return;
 	AddMovementInput(Camera->GetRightVector() * throttle);
 }
 
 void AVRCharacter::BeginTeleport()
 {
-	//Widget->GetUserWidgetObject()->PlayAnimation(FadeAnim, 0.1, 1);
-	//Widget->SetVisibility(true);
-
-	SetStartFadeFlag(true);
-
-	//SequencePlayer->Play();
-	//Widget->GetUserWidgetObject()->PlayAnimation(FadeAnim, 0, 100);
-	//if (!IsHeadMountedDisplayConnected())
-	//{
-		/*APlayerController* controller = Cast<APlayerController>(GetController());
-		if (controller)
-		{
-			controller->PlayerCameraManager->StartCameraFade(0, 1, teleportFadeTime, FLinearColor::Black);
-		}*/
-		//SequencePlayer->Play();
-
+	if (fadeState != EFade::OFF)
+		return;
+	fadeState = EFade::START;
 	FTimerHandle handle;
 	GetWorldTimerManager().SetTimer(handle, this, &AVRCharacter::EndTeleport, teleportFadeTime, false);
-	/*}
-	else
-	{
-		SetLocationToMarker();
-	}*/
 }
 
 void AVRCharacter::EndTeleport()
@@ -255,13 +133,6 @@ void AVRCharacter::EndTeleport()
 	SetLocationToMarker();
 	FTimerHandle handle;
 	GetWorldTimerManager().SetTimer(handle, this, &AVRCharacter::ReverseFade, fadeScreenTime, false);
-
-	//Widget->SetVisibility(false);
-	/*APlayerController* controller = Cast<APlayerController>(GetController());
-	if (controller)
-	{
-		controller->PlayerCameraManager->StartCameraFade(1, 0, teleportFadeTime, FLinearColor::Black);
-	}*/
 }
 
 void AVRCharacter::SetLocationToMarker()
@@ -272,44 +143,11 @@ void AVRCharacter::SetLocationToMarker()
 	SetActorLocation(markerLoc);
 }
 
-UWidgetAnimation* AVRCharacter::GetWidgetAnim()
-{
-	if (!Widget)
-		return nullptr;
-	UProperty* prop = Widget->GetUserWidgetObject()->GetClass()->PropertyLink;
-	while (prop)
-	{
-		if (prop->GetClass() == UObjectProperty::StaticClass())
-		{
-			UObjectProperty* objProp = Cast<UObjectProperty>(prop);
-			if (objProp->PropertyClass == UWidgetAnimation::StaticClass())
-			{
-				UObject* object = objProp->GetObjectPropertyValue_InContainer(Widget->GetUserWidgetObject());
-				UWidgetAnimation* widgetAnim = Cast<UWidgetAnimation>(object);
-				if (widgetAnim->GetName().Find("FadeAnim") >= 0)
-				{
-					UE_LOG(LogTemp, Warning, TEXT("Found anim: %s"), *widgetAnim->GetName());
-					return widgetAnim;
-				}
-			}
-		}
-
-		prop = prop->PropertyLinkNext;
-	}
-
-	return nullptr;
-}
-
-/*bool AVRCharacter::IsHeadMountedDisplayConnected()
-{
-	return GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice() && GEngine->XRSystem->GetHMDDevice()->IsHMDConnected();
-}*/
-
-void AVRCharacter::StartFade(float DeltaTime)
+void AVRCharacter::ContinueFade(float DeltaTime)
 {
 	fadeDelta += DeltaTime;
 
-	if (reverseFadeDir)
+	if (fadeState == EFade::REVERSE)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("*** Fade IN!"));
 		Fade(Opaque, Transparent);
@@ -323,13 +161,12 @@ void AVRCharacter::StartFade(float DeltaTime)
 	if (fadeDelta > teleportFadeTime)
 	{
 		fadeDelta = 0;
-		SetStartFadeFlag(false);
-		if (reverseFadeDir)
+		if (fadeState == EFade::REVERSE)
 		{
 			UE_LOG(LogTemp, Error, TEXT("*** Fade OVER!"));
-			reverseFadeDir = false;
 			Oculus->SetColorScaleAndOffset(FLinearColor(1, 1, 1, 1), FLinearColor(0, 0, 0, 0), true);
 		}
+		fadeState = EFade::OFF;
 	}
 }
 
@@ -344,13 +181,7 @@ void AVRCharacter::Fade(FLinearColor start, FLinearColor end)
 	Oculus->SetColorScaleAndOffset(updatedColor, FLinearColor(0, 0, 0, 0), true);
 }
 
-void AVRCharacter::SetStartFadeFlag(bool state)
-{
-	startFade = state;
-}
-
 void AVRCharacter::ReverseFade()
 {
-	reverseFadeDir = true;
-	SetStartFadeFlag(true);
+	fadeState = EFade::REVERSE;
 }

@@ -2,11 +2,8 @@
 
 #pragma once
 
-//#include "Math/Vector.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
-//#include "Templates/UniquePtr.h"
-//#include "Engine/GameEngine.h"
 #include "VRCharacter.generated.h"
 
 UCLASS()
@@ -35,12 +32,10 @@ private:
 	void MoveRight(float throttle);
 	void BeginTeleport();
 	void EndTeleport();
-	//bool IsHeadMountedDisplayConnected();
 	void SetLocationToMarker();
-	class UWidgetAnimation* GetWidgetAnim();
-	void StartFade(float DeltaTime);
+
+	void ContinueFade(float DeltaTime);
 	void Fade(FLinearColor start, FLinearColor end);
-	void SetStartFadeFlag(bool state);
 	void ReverseFade();
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Camera")
@@ -49,17 +44,6 @@ protected:
 	class USceneComponent* VRRoot;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class UStaticMeshComponent* DestinationMarker;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
-	class UStereoLayerComponent* StereoLayer;
-	UPROPERTY(VisibleAnywhere)
-	class ULevelSequencePlayer* SequencePlayer;
-	//class UMovieSceneSequencePlayer* SequencePlayer;
-	//class ALevelSequenceActor* MovieActor;
-	UPROPERTY(EditAnywhere)
-	//class ULevelSequence* SequenceAsset;
-	class ULevelSequence* SequenceAsset;
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
-	class UWidgetComponent* Widget;
 
 private:
 	UPROPERTY(EditAnywhere)
@@ -70,20 +54,12 @@ private:
 
 	class UOculusFunctionLibrary* Oculus = nullptr;;
 
-	//UPROPERTY(meta = (BindWidgetAnim))
-	class UWidgetAnimation* FadeAnim = nullptr;
-	class UMaterialInterface* WidgetMat = nullptr;
-
-	bool init = false;
-	float fadeDelta;
-	bool startFade = false;
-	bool reverseFadeDir = false;
+	float fadeDelta = 0;
 	float fadeScreenTime = 0.5f;
 
-/*	const FVector* Transparent = nullptr;
-	const FVector* Opaque = nullptr;*/
 	struct FLinearColor Transparent;
 	struct FLinearColor Opaque;
-	//TUniquePtr<FVector> Transparent = nullptr;
-	//TUniquePtr<FVector> Opaque = nullptr;
+
+	enum class EFade { OFF, START, REVERSE};
+	EFade fadeState = EFade::OFF;
 };
