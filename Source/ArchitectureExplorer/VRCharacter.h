@@ -52,7 +52,7 @@ private:
 	UPROPERTY(EditAnywhere)
 	float teleportFadeTime = 1; // seconds
 
-	class UOculusFunctionLibrary* Oculus = nullptr;;
+	class UOculusFunctionLibrary* Oculus = nullptr;
 
 	float fadeDelta = 0;
 	float fadeScreenTime = 0.5f;
