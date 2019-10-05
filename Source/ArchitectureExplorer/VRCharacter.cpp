@@ -14,6 +14,10 @@
 #include "Components/CapsuleComponent.h"
 #include "OculusFunctionLibrary.h"
 #include "Math/Color.h"
+#include "NavigationSystem.h"
+#include "Components/PostProcessComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Curves/CurveFloat.h"
 
 // Sets default values
 AVRCharacter::AVRCharacter()
@@ -33,6 +37,9 @@ AVRCharacter::AVRCharacter()
 
 	DestinationMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DestinationMarker"));
 	DestinationMarker->SetupAttachment(GetRootComponent());
+
+	PostProcessComponent = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcessComponent"));
+	PostProcessComponent->SetupAttachment(GetRootComponent());
 }
 
 // Called when the game starts or when spawned
@@ -41,6 +48,22 @@ void AVRCharacter::BeginPlay()
 	Super::BeginPlay();
 
 	DestinationMarker->SetVisibility(false);
+
+	if (init)
+	{
+		if (BlinkerMaterialBase)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("*** Found blinker material base! Creating instance.."));
+			BlinkerMaterialInstance = UMaterialInstanceDynamic::Create(BlinkerMaterialBase, this);
+			PostProcessComponent->AddOrUpdateBlendable(BlinkerMaterialInstance);
+
+			init = false;
+		}
+		else
+		{
+			UE_LOG(LogTemp, Error, TEXT("*** Blinker material base NOT FOUND!!!"));
+		}
+	}
 }
 
 // Called every frame
@@ -53,6 +76,7 @@ void AVRCharacter::Tick(float DeltaTime)
 	VRRoot->AddWorldOffset(-newCameraOffset);
 
 	UpdateDestinationMarker();
+	UpdateBlinkers();
 
 	if (fadeState != EFade::OFF)
 	{
@@ -67,25 +91,45 @@ void AVRCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	PlayerInputComponent->BindAxis(TEXT("Forward"), this, &AVRCharacter::MoveForward);
 	PlayerInputComponent->BindAxis(TEXT("Right"), this, &AVRCharacter::MoveRight);
 	PlayerInputComponent->BindAction(TEXT("Teleport"), IE_Released, this, &AVRCharacter::BeginTeleport);
+	PlayerInputComponent->BindAxis(TEXT("MouseLookX"), this, &AVRCharacter::MouseLookX);
+	PlayerInputComponent->BindAxis(TEXT("MouseLookY"), this, &AVRCharacter::MouseLookY);
+	bUseControllerRotationPitch = true;
+}
+
+bool AVRCharacter::GetMarkerPos(const FVector& start, FVector& end, FVector& newPos)
+{
+	FHitResult hit;
+	bool isHit = GetWorld()->LineTraceSingleByChannel(hit, start, end, ECollisionChannel::ECC_Visibility);
+	if (!isHit) { return false; }
+	FNavLocation projHit;
+	isHit &= GetProjectedHitLocation(hit.Location, projHit);
+	newPos = projHit.Location;
+	return isHit;
+}
+
+bool AVRCharacter::GetProjectedHitLocation(const FVector& hitLoc, FNavLocation& projHit)
+{
+	UNavigationSystemV1* navSys = UNavigationSystemV1::GetCurrent(GetWorld());
+	return navSys->ProjectPointToNavigation(hitLoc, projHit, teleportProjectionExtent);
 }
 
 void AVRCharacter::UpdateDestinationMarker()
 {
-	FHitResult hit;
 	FVector start = Camera->GetComponentLocation();
 	FVector end = Camera->GetForwardVector() * maxTeleportDistance + start;
-
 	DrawDebugLine(GetWorld(), start, end, FColor::Green, false, 1, 0, 1);
 
-	if (GetWorld()->LineTraceSingleByChannel(hit, start, end, ECollisionChannel::ECC_Visibility))
-	{
-		DestinationMarker->SetVisibility(true);
-		DestinationMarker->SetWorldLocation(hit.Location);
-	}
-	else
+	FVector newPos;
+	if (!GetMarkerPos(start, end, newPos))
 	{
 		DestinationMarker->SetVisibility(false);
+		return;
 	}
+
+	DestinationMarker->SetVisibility(true);
+	float diffHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	newPos.Z -= diffHeight;
+	DestinationMarker->SetWorldLocation(newPos);
 }
 
 void AVRCharacter::MoveForward(float throttle)
@@ -100,6 +144,16 @@ void AVRCharacter::MoveRight(float throttle)
 	if (fadeState != EFade::OFF)
 		return;
 	AddMovementInput(Camera->GetRightVector() * throttle);
+}
+
+void AVRCharacter::MouseLookX(float throttle)
+{
+	AddControllerYawInput(throttle);
+}
+
+void AVRCharacter::MouseLookY(float throttle)
+{
+	AddControllerPitchInput(throttle);
 }
 
 void AVRCharacter::BeginTeleport()
@@ -122,7 +176,7 @@ void AVRCharacter::SetLocationToMarker()
 {
 	float diffHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	FVector markerLoc = DestinationMarker->GetComponentLocation();
-	markerLoc.Z -= diffHeight;
+	markerLoc.Z += diffHeight;
 	SetActorLocation(markerLoc);
 }
 
@@ -167,4 +221,54 @@ void AVRCharacter::Fade(FLinearColor start, FLinearColor end)
 void AVRCharacter::ReverseFade()
 {
 	fadeState = EFade::REVERSE;
+}
+
+void AVRCharacter::UpdateBlinkers()
+{
+	if (!RadiusVsVelocity)
+		return;
+
+	//float velocity{ GetVelocity().Size() };
+	FVector vVelocity{ GetVelocity() };
+	//vVelocity.Normalize();
+	float velocity{ vVelocity.Size() };
+	UE_LOG(LogTemp, Warning, TEXT("*** Velocity %f"), velocity);
+
+	float newRadius = RadiusVsVelocity->GetFloatValue(velocity);
+	BlinkerMaterialInstance->SetScalarParameterValue(TEXT("Radius"), newRadius);
+
+	if (velocity > 0.5f)
+	{
+		Oculus->SetTiledMultiresLevel(ETiledMultiResLevel::ETiledMultiResLevel_LMSHighTop);
+	}
+	else
+	{
+		Oculus->SetTiledMultiresLevel(ETiledMultiResLevel::ETiledMultiResLevel_Off);
+	}
+
+	FVector2D center = GetBlinkerCenter();
+	BlinkerMaterialInstance->SetVectorParameterValue(TEXT("Center"), FLinearColor(center.X, center.Y, 0));
+}
+
+FVector2D AVRCharacter::GetBlinkerCenter()
+{
+	FVector moveDir = GetVelocity().GetSafeNormal();
+	APlayerController* controller = Cast<APlayerController>(GetController());
+	if (moveDir.IsNearlyZero() || !controller)
+	{
+		return FVector2D{ 0.5f, 0.5 };
+	}
+
+	int projSize = 1000; // 10 m
+	if (FVector::DotProduct(Camera->GetForwardVector(), moveDir) < 0)
+	{
+		moveDir *= -1;
+	}
+	FVector worldLoc = Camera->GetComponentLocation() + moveDir * projSize;
+	FVector2D screenLoc;
+	controller->ProjectWorldLocationToScreen(worldLoc, screenLoc);
+	int32 sizeX, sizeY;
+	controller->GetViewportSize(sizeX, sizeY);
+
+	return FVector2D{ screenLoc.X / sizeX, screenLoc.Y / sizeY };
 }

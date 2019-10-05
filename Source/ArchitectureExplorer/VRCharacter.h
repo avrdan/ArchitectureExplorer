@@ -30,13 +30,20 @@ private:
 	void UpdateDestinationMarker();
 	void MoveForward(float throttle);
 	void MoveRight(float throttle);
+	void MouseLookX(float throttle);
+	void MouseLookY(float throttle);
 	void BeginTeleport();
 	void EndTeleport();
 	void SetLocationToMarker();
+	bool GetMarkerPos(const FVector& start, FVector& end, FVector& newPos);
+	bool GetProjectedHitLocation(const FVector& hitLoc, FNavLocation& projHit);
 
 	void ContinueFade(float DeltaTime);
 	void Fade(FLinearColor start, FLinearColor end);
 	void ReverseFade();
+
+	void UpdateBlinkers();
+	FVector2D GetBlinkerCenter();
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Camera")
 	class UCameraComponent* Camera;
@@ -44,13 +51,23 @@ protected:
 	class USceneComponent* VRRoot;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
 	class UStaticMeshComponent* DestinationMarker;
-
+	UPROPERTY(VisibleAnywhere)
+	class UPostProcessComponent* PostProcessComponent;
+	UPROPERTY(EditAnywhere)
+	class UMaterialInterface* BlinkerMaterialBase;
+	UPROPERTY()
+	UMaterialInstanceDynamic* BlinkerMaterialInstance;
+	UPROPERTY(EditAnywhere)
+	class UCurveFloat* RadiusVsVelocity;
 private:
 	UPROPERTY(EditAnywhere)
 	float maxTeleportDistance = 1000;
 
 	UPROPERTY(EditAnywhere)
 	float teleportFadeTime = 1; // seconds
+
+	UPROPERTY(EditAnywhere)
+	FVector teleportProjectionExtent {100, 100, 100 };
 
 	class UOculusFunctionLibrary* Oculus = nullptr;
 
@@ -62,4 +79,6 @@ private:
 
 	enum class EFade { OFF, START, REVERSE};
 	EFade fadeState = EFade::OFF;
+
+	bool init = true;
 };
