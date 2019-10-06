@@ -59,9 +59,18 @@ protected:
 	UMaterialInstanceDynamic* BlinkerMaterialInstance;
 	UPROPERTY(EditAnywhere)
 	class UCurveFloat* RadiusVsVelocity;
+	UPROPERTY(VisibleAnywhere)
+	class UMotionControllerComponent* LeftController;
+	UPROPERTY(VisibleAnywhere)
+	class UMotionControllerComponent* RightController;
+
+	UPROPERTY(EditAnywhere)
+	class UWidgetComponent* BlinkerWidget;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
+	class UStereoLayerComponent* StereoLayer;
 private:
 	UPROPERTY(EditAnywhere)
-	float maxTeleportDistance = 1000;
+	float maxTeleportDistance = 1500;
 
 	UPROPERTY(EditAnywhere)
 	float teleportFadeTime = 1; // seconds

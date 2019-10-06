@@ -18,6 +18,9 @@
 #include "Components/PostProcessComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Curves/CurveFloat.h"
+#include "Components/WidgetComponent.h"
+#include "Components/StereoLayerComponent.h"
+#include "MotionControllerComponent.h"
 
 // Sets default values
 AVRCharacter::AVRCharacter()
@@ -35,11 +38,30 @@ AVRCharacter::AVRCharacter()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(VRRoot);
 
+	LeftController = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("LeftController"));
+	LeftController->SetupAttachment(VRRoot);
+	LeftController->SetTrackingSource(EControllerHand::Left);
+
+	RightController = CreateDefaultSubobject<UMotionControllerComponent>(TEXT("RightController"));
+	RightController->SetupAttachment(VRRoot);
+	RightController->SetTrackingSource(EControllerHand::Right);
+
 	DestinationMarker = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("DestinationMarker"));
 	DestinationMarker->SetupAttachment(GetRootComponent());
 
 	PostProcessComponent = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcessComponent"));
 	PostProcessComponent->SetupAttachment(GetRootComponent());
+
+	StereoLayer = CreateDefaultSubobject<UStereoLayerComponent>(TEXT("StereoLayer"));
+	StereoLayer->SetupAttachment(Camera);
+	StereoLayer->bSupportsDepth = true;
+	StereoLayer->bLiveTexture = true;
+	StereoLayer->SetQuadSize(FVector2D(1000, 1000));
+	FVector stereoLayerOffset(10, 0, 0);
+	StereoLayer->AddWorldOffset(stereoLayerOffset);
+
+	BlinkerWidget = CreateDefaultSubobject<UWidgetComponent>(TEXT("BlinkerWidget"));
+	BlinkerWidget->SetupAttachment(StereoLayer);
 }
 
 // Called when the game starts or when spawned
@@ -56,6 +78,10 @@ void AVRCharacter::BeginPlay()
 			UE_LOG(LogTemp, Warning, TEXT("*** Found blinker material base! Creating instance.."));
 			BlinkerMaterialInstance = UMaterialInstanceDynamic::Create(BlinkerMaterialBase, this);
 			PostProcessComponent->AddOrUpdateBlendable(BlinkerMaterialInstance);
+			BlinkerWidget->SetVisibility(false);
+			/*BlinkerWidget->SetRelativeRotation(FRotator(0, 180.0f, 0));
+			BlinkerWidget->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			BlinkerWidget->SetMaterial(0, BlinkerMaterialInstance);*/
 
 			init = false;
 		}
@@ -70,10 +96,11 @@ void AVRCharacter::BeginPlay()
 void AVRCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-	FVector newCameraOffset = Camera->GetComponentLocation() - GetActorLocation();
+	/*FVector newCameraOffset = Camera->GetComponentLocation() - GetActorLocation();
+	float diffHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
 	newCameraOffset.Z = 0; // do not move up/down, Z is up
 	AddActorWorldOffset(newCameraOffset);
-	VRRoot->AddWorldOffset(-newCameraOffset);
+	VRRoot->AddWorldOffset(-newCameraOffset);*/
 
 	UpdateDestinationMarker();
 	UpdateBlinkers();
@@ -115,8 +142,27 @@ bool AVRCharacter::GetProjectedHitLocation(const FVector& hitLoc, FNavLocation& 
 
 void AVRCharacter::UpdateDestinationMarker()
 {
-	FVector start = Camera->GetComponentLocation();
-	FVector end = Camera->GetForwardVector() * maxTeleportDistance + start;
+	if (fadeState != EFade::OFF)
+	{
+		DestinationMarker->SetVisibility(false);
+		return;
+	}
+
+	FVector start;
+	FVector end;
+	if (LeftController->IsActive())
+	{
+		FVector look = LeftController->GetForwardVector();
+		look = look.RotateAngleAxis(50, LeftController->GetRightVector());
+		start = LeftController->GetComponentLocation() + look * 5;
+		end = look * maxTeleportDistance + start;
+	}
+	else // fallback to camera
+	{
+		start = Camera->GetComponentLocation();
+		end = Camera->GetForwardVector() * maxTeleportDistance + start;
+	}
+
 	DrawDebugLine(GetWorld(), start, end, FColor::Green, false, 1, 0, 1);
 
 	FVector newPos;
@@ -128,7 +174,7 @@ void AVRCharacter::UpdateDestinationMarker()
 
 	DestinationMarker->SetVisibility(true);
 	float diffHeight = GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
-	newPos.Z -= diffHeight;
+	//newPos.Z -= diffHeight;
 	DestinationMarker->SetWorldLocation(newPos);
 }
 
